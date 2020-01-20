@@ -20,10 +20,16 @@
  * 
  */
 metadata {
-    definition (name: "MyGarage Door Controller", namespace: "spapiers", author: "Stephen Papierski") {
+    definition (name: "MyGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://github.com/stephenpapierski/myGarage/blob/master/hubitat/driver/my-garage.src/my-garage.groovy") {
         capability "GarageDoorControl"
         //capability "Lock"     //Enable ability to keep the garage door shut
         //capability "Chime"    //Enable ability to sound chime before closing door
+
+        //attribute "percentOpen", "float"
+        //attribute "partiallyOpen", "Boolean"
+
+        command "open"
+        command "close"
     }
 
     preferences {
