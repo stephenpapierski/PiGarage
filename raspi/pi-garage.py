@@ -23,6 +23,7 @@
 import gpiozero
 import requests
 import time
+import json
 from flask import Flask, request, jsonify
 from multiprocessing import Process, Value
 
@@ -53,9 +54,15 @@ def close():
     print(request.form)
     return 'Closing Garage Door...'
 
+# Main loop to run in the background
 def garage_loop():
     while (True):
         print("loop running")
+        # Hubitat receives unsolicited http post requests on port 39501
+        url = 'http://10.0.0.10:39501/'
+        body = {'status':'closed', 'previous':'closing'}
+        r = requests.post(url, json=body)
+
         time.sleep (1)
 
 if __name__ == '__main__':
@@ -64,8 +71,6 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0')
     p.join()
 
-    while (True):
-        print ("working")
 #distanceS = distanceSensor(max_voltage = 3.3,
 #                             clock_pin = 11,
 #                             mosi_pin = 10,
