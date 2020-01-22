@@ -1,26 +1,26 @@
 /**
- *  MyGarage Smart Garage Door Controller
+ * PiGarage Smart Garage Door Controller
  *
- *  Copyright 2020 Stephen Papierski
+ * Copyright 2020 Stephen Papierski
  *
- *  Licensed under the GNU General Public License v3.0 (the "License"); you may not use this file except
- *  in compliance with the License. You may obtain a copy of the License at:
+ * Licensed under the GNU General Public License v3.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at:
  *
- *      http://gnu.org/licenses/gpl-3.0.en.html
+ *     http://gnu.org/licenses/gpl-3.0.en.html
  *
- *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
- *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
- *  for the specific language governing permissions and limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ * for the specific language governing permissions and limitations under the License.
  *
- *  Change History:
+ * Change History:
  *
- *    Date        Who                   What
- *    ----        ---                   ----
- *    2020-01-19  Stephen Papierski     Initial Commit
+ *   Date        Who                   What
+ *   ----        ---                   ----
+ *   2020-01-19  Stephen Papierski     Initial Commit
  * 
  */
 metadata {
-    definition (name: "MyGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://github.com/stephenpapierski/myGarage/blob/master/hubitat/driver/my-garage.src/my-garage.groovy") {
+    definition (name: "MyGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://github.com/stephenpapierski/PiGarage/blob/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
         capability "GarageDoorControl"
         //capability "Lock"     //Enable ability to keep the garage door shut
         //capability "Chime"    //Enable ability to sound chime before closing door
