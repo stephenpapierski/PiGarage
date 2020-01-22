@@ -21,7 +21,10 @@
 #  
 
 import gpiozero
-from flask import Flask, request
+import requests
+import time
+from flask import Flask, request, jsonify
+from multiprocessing import Process, Value
 
 class distanceSensor(gpiozero.MCP3001):
     def __init__(self, max_voltage=3.3, **spi_args):
@@ -38,19 +41,31 @@ class distanceSensor(gpiozero.MCP3001):
         return self.value <= 100
 
 # Main Program
+# Flask app for receiving POST Requests
 app = Flask(__name__)
-@app.route('/myGarage/open/', methods=['POST'])
+@app.route('/PiGarage/open/', methods=['POST'])
 def open():
     print(request.form)
     return 'Opening Garage Door...'
 
-@app.route('/myGarage/close/', methods=['POST'])
+@app.route('/PiGarage/close/', methods=['POST'])
 def close():
     print(request.form)
     return 'Closing Garage Door...'
 
+def garage_loop():
+    while (True):
+        print("loop running")
+        time.sleep (1)
+
 if __name__ == '__main__':
+    p = Process(target=garage_loop)
+    p.start()
     app.run(host='0.0.0.0')
+    p.join()
+
+    while (True):
+        print ("working")
 #distanceS = distanceSensor(max_voltage = 3.3,
 #                             clock_pin = 11,
 #                             mosi_pin = 10,
