@@ -20,7 +20,7 @@
  * 
  */
 metadata {
-    definition (name: "MyGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://github.com/stephenpapierski/PiGarage/blob/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
+    definition (name: "PiGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://github.com/stephenpapierski/PiGarage/blob/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
         capability "GarageDoorControl"
         //capability "Lock"     //Enable ability to keep the garage door shut
         //capability "Chime"    //Enable ability to sound chime before closing door
@@ -39,8 +39,16 @@ metadata {
     }
 }
 
+//HTTP POST requests to port 39501 from a device that matches the Device Network Id end up here
 def parse(String description) {
-    log.debug(description)
+    def msg = parseLanMessage(description)
+    def body=msg.body
+    body = parseJson(body)
+    log.debug(body)
+    //def status = body.status
+    //def previous = body.previous
+    //log.debug("Status = $status & Previous = $previous")
+    
 }
 
 def close() {
