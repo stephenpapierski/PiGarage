@@ -20,7 +20,7 @@
  * 
  */
 metadata {
-    definition (name: "PiGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://github.com/stephenpapierski/PiGarage/blob/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
+    definition (name: "PiGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://raw.githubusercontent.com/stephenpapierski/PiGarage/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
         capability "GarageDoorControl"
         //capability "Lock"     //Enable ability to keep the garage door shut
         //capability "Chime"    //Enable ability to sound chime before closing door
@@ -44,25 +44,18 @@ def parse(String description) {
     def msg = parseLanMessage(description)
     def body=msg.body
     body = parseJson(body)
-    log.debug(body)
-    //def status = body.status
-    //def previous = body.previous
-    //log.debug("Status = $status & Previous = $previous")
+    def status = body.status
+    log.debug("Status = $status")
+    sendEvent(name:"garageDoorControl", value:status, isStateChanged:true)
     
 }
 
 def close() {
-    success = sendCmd(devicePath + "/close/")
-    //if (success) {
-        sendEvent(name: "garageDoorControl", value: "closing", isStateChanged: true)
-    //}
+    sendCmd(devicePath + "/close/")
 }
 
 def open() {
-    success = sendCmd(devicePath + "/open/")
-    //if (success) {
-        sendEvent(name: "garageDoorControl", value: "opening", isStateChanged: true)
-    //}
+    sendCmd(devicePath + "/open/")
 }
 
 def sendCmd(String action) {
