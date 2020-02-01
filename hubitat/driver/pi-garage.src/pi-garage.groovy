@@ -22,20 +22,21 @@
 metadata {
     definition (name: "PiGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://raw.githubusercontent.com/stephenpapierski/PiGarage/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
         capability "GarageDoorControl"
+        capability "Refresh"
         //capability "Lock"     //Enable ability to keep the garage door shut
         //capability "Chime"    //Enable ability to sound chime before closing door
 
-        //attribute "percentOpen", "float"
-        //attribute "partiallyOpen", "Boolean"
+        attribute "stoppedOpen", "Boolean"
 
         command "open"
         command "close"
     }
 
     preferences {
-        input(name: "deviceIP", type: "string", title:"Device IP Address", description: "Enter IP Address of your HTTP server", required: true, displayDuringSetup: true)
-        input(name: "devicePort", type: "string", title:"Device Port", description: "Enter Port of your HTTP server (defaults to 80)", defaultValue: "80", required: false, displayDuringSetup: true)
-        input(name: "devicePath", type: "string", title:"URL Path", description: "Rest of the URL.", displayDuringSetup: true)
+        input(name: "deviceIP", type: "string", title: "Device IP Address", description: "Enter IP Address of your HTTP server", required: true, displayDuringSetup: true)
+        input(name: "devicePort", type: "string", title: "Device Port", description: "Enter Port of your HTTP server (defaults to 5000)", defaultValue: "5000", required: false, displayDuringSetup: true)
+        input(name: "transitionTime", type: "number", title: "Transition Time", description: "Number of seconds it takes for door to transition from open to closed (round up).", defaultValue: "15", required: true, displayDuringSetup: true)
+        input(name: "actuateDuration", type: "number", title: "Actuate Duration", description: "Number of milliseconds to actuate the relay to open or close the door.", defaultValue: "500", required: false, displayDuringSetup: true)
     }
 }
 
@@ -45,27 +46,44 @@ def parse(String description) {
     def body=msg.body
     body = parseJson(body)
     def status = body.status
-    log.debug("Status = $status")
-    sendEvent(name:"garageDoorControl", value:status, isStateChanged:true)
+    def isNew = body.isNew
+    //log.debug("Status = $status")
+    if (status == "stopped"){
+        sendEvent(name:"garageDoorControl", value:"open", isStateChanged:isNew)
+        sendEvent(name:"stoppedOpen", value:true, isStateChanged:isNew)
+    } else {
+        sendEvent(name:"garageDoorControl", value:status, isStateChanged:isNew)
+        sendEvent(name:"stoppedOpen", value:false, isStateChanged:isNew)
+    }
+    
+}
+
+def updated(){
+    def postData = ["transitionTime":settings.transitionTime,"actuateDuration":settings.actuateDuration]
+    sendCmd(devicePath + "/configure/", postData)
+    refresh()
     
 }
 
 def close() {
-    sendCmd(devicePath + "/close/")
+    sendCmd(devicePath + "/close/", [:])
 }
 
 def open() {
-    sendCmd(devicePath + "/open/")
+    sendCmd(devicePath + "/open/", [:])
 }
 
-def sendCmd(String action) {
-    def localDevicePort = (devicePort==null) ? "80" : devicePort 
+def refresh() {
+    sendCmd(devicePath + "/refresh/", [:])
+}
+
+def sendCmd(String action, Map postData) {
+    def localDevicePort = (devicePort==null) ? "5000" : devicePort 
     
-    //TODO: Add variable sanitation (stripping / from front/back)
-    //def params = [uri: "http://${username}:${password}@${ip}/${action}"]
-    def params = [uri: "http://${deviceIP}:${localDevicePort}/${action}"]
+    def url = "http://${deviceIP}:${localDevicePort}/${action}"
+    
     try { 
-        httpPost(params) { resp -> 
+        httpPostJson(url,postData) { resp -> 
             //log.debug(resp.isSuccess())
             //return resp.isSuccess()
         }
