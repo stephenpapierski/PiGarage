@@ -24,7 +24,7 @@ import RPi.GPIO as GPIO
 import requests
 import time
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from multiprocessing import Process, Value
 
 class garageDoor():
@@ -45,20 +45,33 @@ class garageDoor():
         self._stopNew = False
         self._startTime = None
         self._statusFile = "piGarageStatus"
+        self._settingsFile = "piGarageSettings"
+        self._refresh = True
         # Run Configure with default params
         #TODO default to 15 seconds
-        self.updateSettings(transitionTime=30, actuateDuration = 1000)
+        self.setControls(transitionTime=30, actuateDuration=1000, refresh=True)
         self._updateGPIOStatus()
 
     ##########################################################################
     # Public functions
     ##########################################################################
 
+    def needsRefresh(self):
+        return self._refresh
+
     # Update the configurable parameters of the sysem
-    def updateSettings(self, transitionTime, actuateDuration):
-        #self._urlPath = urlPath
-        self._transitionTime = transitionTime
-        self._actuateDuration = actuateDuration
+    def setControls(self, transitionTime=None, actuateDuration=None, refresh=None):
+        if (transitionTime):
+            self._transitionTime = transitionTime
+        if (actuateDuration):
+            self._actuateDuration = actuateDuration
+        if (refresh is not None):
+            self._refresh = refresh
+
+        self._writeSettings()
+
+    def getControls(self):
+        self._readSettings()
 
     # Try to close the garage door
     def closeDoor(self):
@@ -117,8 +130,8 @@ class garageDoor():
     #           newStatus   boolean     is this status new?
     #           status      string      current status value
     def checkNewStatus(self):
-        isFullyClosed = self._isFullyClosed()
-        isFullyOpen = self._isFullyOpen()
+        isFullyClosed = self._isClosed()
+        isFullyOpen = self._isOpen()
         newStatus = None
 
         # Check if the time has elapsed (door is stopped partially open)
@@ -175,12 +188,12 @@ class garageDoor():
         self._open = GPIO.input(self._openPin)
 
     # Return true if door is in FULLY closed position, false if not
-    def _isFullyClosed(self):
+    def _isClosed(self):
         self._updateGPIOStatus()
         return self._closed
 
     # Return true if door is in FULLY open position, false if not
-    def _isFullyOpen(self):
+    def _isOpen(self):
         self._updateGPIOStatus()
         return self._open
 
@@ -210,6 +223,24 @@ class garageDoor():
         f = open(self._statusFile, "r")
         self._status = f.read()
 
+    # Write hubitat settings to the settings file. This should be performed by
+    # the background Flask thread.
+    def _writeSettings(self):
+        settings = {}
+        settings['transitionTime'] = self._transitionTime
+        settings['actuateDuration'] = self._actuateDuration
+        settings['refresh'] = self._refresh
+        with open(self._settingsFile, "w") as outfile:
+            json.dump(settings, outfile)
+
+    # Read hubitat settings from the settings file. This shold be performed by 
+    # the maain thread.
+    def _readSettings(self):
+        with open(self._settingsFile, "r") as json_file:
+            data = json.load(json_file)
+            self._transitionTime = data['transitionTime']
+            self._actuateDuration = data['actuateDuration']
+            self._refresh = data['refresh']
 
 # Main Program
 # Flask app for receiving POST Requests
@@ -218,27 +249,48 @@ app = Flask(__name__)
 def open_command():
     #print(request.form)
     garage.openDoor()
-    return 'Opening Garage Door...'
+    return {'status':'Opening Garage Door...'}
 
 @app.route('/PiGarage/close/', methods=['POST'])
 def close_command():
     #print(request.form)
     garage.closeDoor()
-    return 'Closing Garage Door...'
+    return {'status':'Closing Garage Door...'}
+
+@app.route('/PiGarage/configure/', methods=['POST'])
+def configure_command():
+    data = request.get_json()
+    transitionTime = data['transitionTime']
+    actuateDuration = data['actuateDuration']
+    garage.setControls(transitionTime=transitionTime, actuateDuration=actuateDuration, refresh=True)
+    return {'status':'Configuring...'}
+
+@app.route('/PiGarage/refresh/', methods=['POST'])
+def refresh_command():
+    time.sleep(1)
+    garage.setControls(refresh = True)
+    return {'status':'Refreshing...'}
 
 # Main loop to run in the background
 def garage_loop():
     while (True):
+        garage.getControls()
+
         (newStatus, status) = garage.checkNewStatus()
 
         # Hubitat receives unsolicited http post requests on port 39501
         # and routes the message to the parse() method of the device 
         # with the matching DeviceNetworkId (IP, Mac, etc)
-        if (newStatus):
-            print("Posting new status")
+        if (newStatus or garage.needsRefresh()):
+
+            if (newStatus):
+                print("Posting new status")
+            else:
+                print("Posting refresh")
+                garage.setControls(refresh = False)
 
             url = 'http://10.0.0.10:39501'
-            body = {'status':status}
+            body = {'status':status,'isNew':newStatus}
             r = requests.post(url, json=body)
 
             print("NewStatus: "+str(status))
