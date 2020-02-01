@@ -27,6 +27,7 @@ metadata {
         //capability "Chime"    //Enable ability to sound chime before closing door
 
         attribute "stoppedOpen", "Boolean"
+        attribute "lastActivity", "String"
 
         command "open"
         command "close"
@@ -37,6 +38,7 @@ metadata {
         input(name: "devicePort", type: "string", title: "Device Port", description: "Enter Port of your HTTP server (defaults to 5000)", defaultValue: "5000", required: false, displayDuringSetup: true)
         input(name: "transitionTime", type: "number", title: "Transition Time", description: "Number of seconds it takes for door to transition from open to closed (round up).", defaultValue: "15", required: true, displayDuringSetup: true)
         input(name: "actuateDuration", type: "number", title: "Actuate Duration", description: "Number of milliseconds to actuate the relay to open or close the door.", defaultValue: "500", required: false, displayDuringSetup: true)
+        input(name: "debugEnable", type: "bool", title: "Enable debug logging", defaultValue: false)
     }
 }
 
@@ -47,7 +49,8 @@ def parse(String description) {
     body = parseJson(body)
     def status = body.status
     def isNew = body.isNew
-    //log.debug("Status = $status")
+    if (settings.debugEnable){
+        if (debugEnable) log.debug("Status = $status")}
     if (status == "stopped"){
         sendEvent(name:"garageDoorControl", value:"open", isStateChanged:isNew)
         sendEvent(name:"stoppedOpen", value:true, isStateChanged:isNew)
@@ -55,6 +58,14 @@ def parse(String description) {
         sendEvent(name:"garageDoorControl", value:status, isStateChanged:isNew)
         sendEvent(name:"stoppedOpen", value:false, isStateChanged:isNew)
     }
+    
+    //Record last activity
+    def now
+    if(location.timeZone)
+    now = new Date().format("yyyy MMM dd EEE h:mm:ss a", location.timeZone)
+    else
+    now = new Date().format("yyyy MMM dd EEE h:mm:ss a")
+    sendEvent(name: "lastActivity", value: now, displayed:false)
     
 }
 
@@ -89,6 +100,6 @@ def sendCmd(String action, Map postData) {
         }
     }
     catch (Exception e) {
-        log.debug "sendCmd hit exception ${e} on POST"
+        if (debugEnable) log.debug "sendCmd hit exception ${e} on POST"
     }
 }
