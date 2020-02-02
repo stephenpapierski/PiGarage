@@ -17,7 +17,7 @@
 #
 #   Date        Who                   What
 #   ----        ---                   ----
-#   2020-01-19  Stephen Papierski     Initial Commit
+#   2020-01-19  Stephen Papierski     Initial release
 #  
 
 import RPi.GPIO as GPIO
@@ -28,15 +28,21 @@ from flask import Flask, request
 from multiprocessing import Process, Value
 
 class garageDoor():
-    def __init__(self, closePin = 29, openPin = 31, relayPin = 33):
+    def __init__(self,closePin=29,openPin=31,relayPin=33,greenPin=11,yellowPin=13,redPin=15):
         #Setup pins
-        GPIO.setup(closePin,GPIO.IN)
-        GPIO.setup(openPin,GPIO.IN)
+        GPIO.setup(closePin, GPIO.IN)
+        GPIO.setup(openPin, GPIO.IN)
         GPIO.setup(relayPin, GPIO.OUT)
+        GPIO.setup(greenPin, GPIO.OUT)
+        GPIO.setup(yellowPin, GPIO.OUT)
+        GPIO.setup(redPin, GPIO.OUT)
 
         self._closePin = closePin
         self._openPin = openPin
         self._relayPin = relayPin
+        self._greenPin = greenPin
+        self._yellowPin = yellowPin
+        self._redPin = redPin
         self._isFullyClosed = None
         self._isFullyOpen = None
         self._wasFullyClosed = None
@@ -48,8 +54,7 @@ class garageDoor():
         self._settingsFile = "piGarageSettings"
         self._refresh = True
         # Run Configure with default params
-        #TODO default to 15 seconds
-        self.setControls(transitionTime=30, actuateDuration=1000, refresh=True)
+        self.setControls(transitionTime=15, actuateDuration=1000, refresh=True)
         self._updateGPIOStatus()
 
     ##########################################################################
@@ -97,7 +102,7 @@ class garageDoor():
             self._actuateRelay()
             print("Door closing")
         else:
-            print ("Didn't do anything")
+            print ("Valid status not found")
 
     # Try to open the garage door
     def openDoor(self):
@@ -123,7 +128,7 @@ class garageDoor():
             self._doubleActuateDoor()
             print ("Door closing then opening")
         else:
-            print ("Didn't do anything")
+            print ("Valid status not found")
 
     # This should be called frequenty in a main loop to keep everything up to date
     # @returns  (newStatus, status)
@@ -172,6 +177,7 @@ class garageDoor():
 
         if (newStatus):
             self._status = newStatus
+            self._updateStatusLeds(newStatus)
             self._writeStatus()
             return (True, newStatus)
         else:
@@ -242,6 +248,30 @@ class garageDoor():
             self._actuateDuration = data['actuateDuration']
             self._refresh = data['refresh']
 
+    def _updateStatusLeds(self, status):
+        # Reset all status leds
+        leds = (self._greenPin, self._yellowPin, self._redPin)
+        GPIO.output(leds, GPIO.LOW)
+
+        # if open -> red led
+        if (self._status == "open"):
+            setLeds = (self._redPin)
+        # if closed -> green led
+        elif (self._status == "closed"):
+            setLeds = (self._greenPin)
+        # if opening or closing -> yellow led
+        elif (self._status == "opening" or self._status == "closing"):
+            setLeds = (self._yellowPin)
+        # if stopped -> yellow and red
+        elif (self._status == "stopped"):
+            setLeds = (self._yellowPin, self._redPin)
+        else:
+            setLeds = None
+            print ("Valid status not found")
+
+        if (setLeds):
+            GPIO.output(setLeds, GPIO.HIGH)
+
 # Main Program
 # Flask app for receiving POST Requests
 app = Flask(__name__)
@@ -294,8 +324,7 @@ def garage_loop():
             r = requests.post(url, json=body)
 
             print("NewStatus: "+str(status))
-
-        time.sleep (1)
+        time.sleep(.1)
 
 if __name__ == '__main__':
     GPIO.setmode(GPIO.BOARD)
