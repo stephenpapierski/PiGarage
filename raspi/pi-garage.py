@@ -169,7 +169,7 @@ class garageDoor():
                 newStatus = "closing"
                 # Start timer
                 self._startTime = time.time()
-        if (isFullyOpen and isFullyClosed):
+        if (isFullyOpen and isFullyClosed and self._status != "unknown"):
             newStatus = "unknown"
 
         self._wasFullyClosed = isFullyClosed
