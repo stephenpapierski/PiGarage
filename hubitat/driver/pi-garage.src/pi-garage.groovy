@@ -28,6 +28,8 @@ metadata {
 
         attribute "stoppedOpen", "Boolean"
         attribute "lastActivity", "String"
+        attribute "lastEvent", "String"
+        attribute "responding", "Boolean"
 
         command "open"
         command "close"
@@ -60,13 +62,8 @@ def parse(String description) {
     }
     
     //Record last activity
-    def now
-    if(location.timeZone)
-    now = new Date().format("yyyy MMM dd EEE h:mm:ss a", location.timeZone)
-    else
-    now = new Date().format("yyyy MMM dd EEE h:mm:ss a")
-    sendEvent(name: "lastActivity", value: now, displayed:false)
-    
+    recordActivity("garage reported ${status}")
+    responding()
 }
 
 def updated(){
@@ -78,14 +75,17 @@ def updated(){
 
 def close() {
     sendCmd(devicePath + "/close/", [:])
+    recordActivity("hub sent close command")
 }
 
 def open() {
     sendCmd(devicePath + "/open/", [:])
+    recordActivity("hub sent open command")
 }
 
 def refresh() {
     sendCmd(devicePath + "/refresh/", [:])
+    recordActivity("hub sent refresh command")
 }
 
 def sendCmd(String action, Map postData) {
@@ -95,11 +95,34 @@ def sendCmd(String action, Map postData) {
     
     try { 
         httpPostJson(url,postData) { resp -> 
-            //log.debug(resp.isSuccess())
-            //return resp.isSuccess()
+            log.debug(resp.isSuccess())
+            if (resp.isSuccess()){
+                responding()
+            } else {
+                notResponding()
+            }
         }
     }
     catch (Exception e) {
         if (debugEnable) log.debug "sendCmd hit exception ${e} on POST"
+        notResponding()
     }
+}
+
+def notResponding(){
+    sendEvent(name:"responding", value:false)
+    sendEvent(name:"garageDoorControl", value:"unknown", isStateChanged:isNew)
+}
+def responding(){
+    sendEvent(name:"responding", value:true)
+}
+def recordActivity(String event){
+    //Record last activity
+    def now
+    if(location.timeZone)
+    now = new Date().format("yyyy MMM dd EEE h:mm:ss a", location.timeZone)
+    else
+    now = new Date().format("yyyy MMM dd EEE h:mm:ss a")
+    sendEvent(name: "lastActivity", value: now, isStateChanged:isNew)
+    sendEvent(name: "lastEvent", value: event, isStateChanged:isNew)
 }
