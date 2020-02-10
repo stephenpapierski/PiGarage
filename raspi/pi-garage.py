@@ -26,6 +26,7 @@ import time
 import json
 from flask import Flask, request
 from multiprocessing import Process, Value
+from os import path
 
 class garageDoor():
     def __init__(self,closePin=29,openPin=31,relayPin=33,greenPin=11,yellowPin=13,redPin=15):
@@ -53,9 +54,13 @@ class garageDoor():
         self._statusFile = "piGarageStatus"
         self._settingsFile = "piGarageSettings"
         self._refresh = True
+        self._hubIp = None
         # Run Configure with default params
-        self.setControls(transitionTime=15, actuateDuration=1000, refresh=True)
         self._updateGPIOStatus()
+        # If settings fail to load from file, set defaults
+        if (self._readSettings()):
+            self.setControls(transitionTime=15, actuateDuration=1000, refresh=True)
+
 
     ##########################################################################
     # Public functions
@@ -65,18 +70,25 @@ class garageDoor():
         return self._refresh
 
     # Update the configurable parameters of the sysem
-    def setControls(self, transitionTime=None, actuateDuration=None, refresh=None):
+    def setControls(self, transitionTime=None, actuateDuration=None, refresh=None, hubIp=None):
         if (transitionTime):
             self._transitionTime = transitionTime
         if (actuateDuration):
             self._actuateDuration = actuateDuration
         if (refresh is not None):
             self._refresh = refresh
+        if (hubIp):
+            self._hubIp = hubIp
 
         self._writeSettings()
 
+    # Read settings from file
     def getControls(self):
         self._readSettings()
+
+    # Get IP of the hub
+    def hubIp(self):
+        return self._hubIp
 
     # Try to close the garage door
     def closeDoor(self):
@@ -147,26 +159,25 @@ class garageDoor():
                 newStatus = "stopped"
 
         # Check for new absolute states
-        if (isFullyClosed != self._wasFullyClosed):
+        if (isFullyClosed != self._wasFullyClosed or isFullyOpen != self._wasFullyOpen):
             # Report door is now fully closed
             if (isFullyClosed):
                 newStatus = "closed"
                 # Reset timer when we reach fully closed
                 self._startTime = None
-            # Report door is no longer closed
-            else:
-                newStatus = "opening"
-                # Start timer
-                self._startTime = time.time()
-        elif (isFullyOpen != self._wasFullyOpen):
             # Report door is now fully open
-            if(isFullyOpen):
+            elif (isFullyOpen):
                 newStatus = "open"
-                # Reset timer when we reach fully open
+                # Reset timer when we reach fully closed
                 self._startTime = None
             # Report door is no longer fully open
-            else:
+            elif(self._wasFullyOpen):
                 newStatus = "closing"
+                # Start timer
+                self._startTime = time.time()
+            # Report door is no longer closed
+            elif(self._wasFullyClosed):
+                newStatus = "opening"
                 # Start timer
                 self._startTime = time.time()
         if (isFullyOpen and isFullyClosed and self._status != "unknown"):
@@ -236,17 +247,23 @@ class garageDoor():
         settings['transitionTime'] = self._transitionTime
         settings['actuateDuration'] = self._actuateDuration
         settings['refresh'] = self._refresh
+        settings['hubIp'] = self._hubIp
         with open(self._settingsFile, "w") as outfile:
             json.dump(settings, outfile)
 
     # Read hubitat settings from the settings file. This shold be performed by 
     # the maain thread.
     def _readSettings(self):
-        with open(self._settingsFile, "r") as json_file:
-            data = json.load(json_file)
-            self._transitionTime = data['transitionTime']
-            self._actuateDuration = data['actuateDuration']
-            self._refresh = data['refresh']
+        if (path.exists(self._settingsFile)):
+            with open(self._settingsFile, "r") as json_file:
+                data = json.load(json_file)
+                self._transitionTime = data['transitionTime']
+                self._actuateDuration = data['actuateDuration']
+                self._refresh = data['refresh']
+                self._hubIp = data['hubIp']
+                return 0
+        else:
+            return 1
 
     def _updateStatusLeds(self, status):
         # Reset all status leds
@@ -254,17 +271,19 @@ class garageDoor():
         GPIO.output(leds, GPIO.LOW)
 
         # if open -> red led
-        if (self._status == "open"):
+        if (status == "open"):
             setLeds = (self._redPin)
         # if closed -> green led
-        elif (self._status == "closed"):
+        elif (status == "closed"):
             setLeds = (self._greenPin)
         # if opening or closing -> yellow led
-        elif (self._status == "opening" or self._status == "closing"):
+        elif (status == "opening" or self._status == "closing"):
             setLeds = (self._yellowPin)
         # if stopped -> yellow and red
-        elif (self._status == "stopped"):
+        elif (status == "stopped"):
             setLeds = (self._yellowPin, self._redPin)
+        elif (status == "unknown"):
+            setLeds = (self._greenPin, self._yellowPin, self._redPin)
         else:
             setLeds = None
             print ("Valid status not found")
@@ -277,14 +296,18 @@ class garageDoor():
 app = Flask(__name__)
 @app.route('/PiGarage/open/', methods=['POST'])
 def open_command():
-    #print(request.form)
     garage.openDoor()
+    # Update hub ip
+    if (not garage.hubIp()):
+        garage.setControls(hubIp=request.remote_addr)
     return {'status':'Opening Garage Door...'}
 
 @app.route('/PiGarage/close/', methods=['POST'])
 def close_command():
-    #print(request.form)
     garage.closeDoor()
+    # Update hub ip
+    if (not garage.hubIp()):
+        garage.setControls(hubIp=request.remote_addr)
     return {'status':'Closing Garage Door...'}
 
 @app.route('/PiGarage/configure/', methods=['POST'])
@@ -292,13 +315,17 @@ def configure_command():
     data = request.get_json()
     transitionTime = data['transitionTime']
     actuateDuration = data['actuateDuration']
-    garage.setControls(transitionTime=transitionTime, actuateDuration=actuateDuration, refresh=True)
+    hubAddr = request.remote_addr
+    garage.setControls(transitionTime=transitionTime, actuateDuration=actuateDuration, refresh=True, hubIp=hubAddr)
     return {'status':'Configuring...'}
 
 @app.route('/PiGarage/refresh/', methods=['POST'])
 def refresh_command():
     time.sleep(1)
     garage.setControls(refresh = True)
+    # Update hub ip
+    if (not garage.hubIp()):
+        garage.setControls(hubIp=request.remote_addr)
     return {'status':'Refreshing...'}
 
 # Main loop to run in the background
@@ -319,11 +346,14 @@ def garage_loop():
                 print("Posting refresh")
                 garage.setControls(refresh = False)
 
-            url = 'http://10.0.0.10:39501'
-            body = {'status':status,'isNew':newStatus}
-            r = requests.post(url, json=body)
+            hubIp = garage.hubIp()
+            print("Sending to " + str(hubIp))
+            if (hubIp):
+                url = 'http://'+hubIp+':39501'
+                body = {'status':status,'isNew':newStatus}
+                r = requests.post(url, json=body)
 
-            print("NewStatus: "+str(status))
+                print("NewStatus: "+str(status))
         time.sleep(.1)
 
 if __name__ == '__main__':
