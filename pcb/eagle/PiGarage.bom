@@ -1,0 +1,17 @@
+"Qty";"Value";"Device";"Package";"Parts";"Description";"";
+"1";"";"RPI-GPIO-20X2";"RPI-GPIO-20X2";"J4";"Raspberry Pi GPIO Pinout";"";
+"2";"10k";"RESISTOR0805";"0805";"R4, R5";"Generic Resistor Package";"";
+"1";"120";"RESISTOR0805";"0805";"R2";"Generic Resistor Package";"";
+"1";"150";"RESISTOR0805";"0805";"R3";"Generic Resistor Package";"";
+"1";"200";"RESISTOR0805";"0805";"R1";"Generic Resistor Package";"";
+"1";"680";"RESISTOR0805";"0805";"R6";"Generic Resistor Package";"";
+"1";"DNP";"LEDCHIPLED_1206";"CHIPLED_1206";"LED5";"LED";"";
+"1";"DNP";"RESISTOR0805";"0805";"R7";"Generic Resistor Package";"";
+"1";"FRAME-LETTERNO_PACKAGE";"FRAME-LETTERNO_PACKAGE";"DUMMY";"FRAME1";"Schematic Frame - Letter";"";
+"1";"G5LE";"G5LE";"G5LE";"K1";"RELAY";"";
+"1";"HSMG-C150";"LEDCHIPLED_1206";"CHIPLED_1206";"LED1";"LED";"";
+"1";"HSMN-C150";"LEDCHIPLED_1206";"CHIPLED_1206";"LED4";"LED";"";
+"1";"HSMS-C150";"LEDCHIPLED_1206";"CHIPLED_1206";"LED3";"LED";"";
+"1";"HSMY-C150";"LEDCHIPLED_1206";"CHIPLED_1206";"LED2";"LED";"";
+"3";"JST_2PIN_HEADER";"JST_2PIN_HEADER";"JST_2PIN_RIGHT_HEADER";"J1, J2, J3";"2 Pin JST Shrouded Header";"";
+"1";"NUD3105";"NUD3105";"SOT23";"T1";"Integrated Relay, Inductive Load Driver";"";
