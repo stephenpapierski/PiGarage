@@ -54,10 +54,10 @@ def parse(String description) {
     if (settings.debugEnable){
         if (debugEnable) log.debug("Status = $status")}
     if (status == "stopped"){
-        sendEvent(name:"garageDoorControl", value:"open", isStateChanged:isNew)
+        sendEvent(name:"door", value:"open", isStateChanged:isNew)
         sendEvent(name:"stoppedOpen", value:true, isStateChanged:isNew)
     } else {
-        sendEvent(name:"garageDoorControl", value:status, isStateChanged:isNew)
+        sendEvent(name:"door", value:status, isStateChanged:isNew)
         sendEvent(name:"stoppedOpen", value:false, isStateChanged:isNew)
     }
     
@@ -110,7 +110,7 @@ def sendCmd(String action, Map postData) {
 
 def notResponding(){
     sendEvent(name:"responding", value:false)
-    sendEvent(name:"garageDoorControl", value:"unknown", isStateChanged:isNew)
+    sendEvent(name:"door", value:"unknown", isStateChanged:isNew)
 }
 def responding(){
     sendEvent(name:"responding", value:true)
