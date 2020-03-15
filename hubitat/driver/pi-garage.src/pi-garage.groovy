@@ -20,7 +20,7 @@
  * 
  */
 metadata {
-    definition (name: "PiGarage Door Controller", namespace: "PinionValleyProjects", author: "Stephen Papierski", importUrl: "https://raw.githubusercontent.com/stephenpapierski/PiGarage/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
+    definition (name: "PiGarage Door Controller", namespace: "PinonValleyProjects", author: "Stephen Papierski", importUrl: "https://raw.githubusercontent.com/stephenpapierski/PiGarage/master/hubitat/driver/pi-garage.src/pi-garage.groovy") {
         capability "GarageDoorControl"
         capability "Refresh"
         //capability "Lock"     //Enable ability to keep the garage door shut
@@ -95,7 +95,6 @@ def sendCmd(String action, Map postData) {
     
     try { 
         httpPostJson(url,postData) { resp -> 
-            log.debug(resp.isSuccess())
             if (resp.isSuccess()){
                 responding()
             } else {
