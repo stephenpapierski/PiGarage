@@ -18,21 +18,24 @@
 #   Date        Who                   What
 #   ----        ---                   ----
 #   2020-01-19  Stephen Papierski     Initial release
+#   2020-11-22  Stephen Papierski     Making simpler and more reliable with single thread and interrupts
 #  
 
 import RPi.GPIO as GPIO
 import requests
 import time
 import json
+import threading
 from flask import Flask, request
-from multiprocessing import Process, Value
 from os import path
 
 class garageDoor():
     def __init__(self,closePin=29,openPin=31,relayPin=33,greenPin=11,yellowPin=13,redPin=15):
-        #Setup pins
+        #Setup pins and interrupt call backs
         GPIO.setup(closePin, GPIO.IN)
+        GPIO.add_event_detect(closePin, GPIO.BOTH, callback=self._checkDoorChanged)
         GPIO.setup(openPin, GPIO.IN)
+        GPIO.add_event_detect(openPin, GPIO.BOTH, callback=self._checkDoorChanged)
         GPIO.setup(relayPin, GPIO.OUT)
         GPIO.setup(greenPin, GPIO.OUT)
         GPIO.setup(yellowPin, GPIO.OUT)
@@ -44,56 +47,46 @@ class garageDoor():
         self._greenPin = greenPin
         self._yellowPin = yellowPin
         self._redPin = redPin
-        self._isFullyClosed = None
-        self._isFullyOpen = None
-        self._wasFullyClosed = None
-        self._wasFullyOpen = None
         self._status = None
-        self._stopNew = False
-        self._startTime = None
-        self._statusFile = "piGarageStatus"
         self._settingsFile = "piGarageSettings"
-        self._refresh = True
         self._hubIp = None
         # Run Configure with default params
-        self._updateGPIOStatus()
         # If settings fail to load from file, set defaults
         if (self._readSettings()):
-            self.setControls(transitionTime=15, actuateDuration=1000, refresh=True)
+            print("No existing settings, writing default")
+            self.setControls(transitionTime=15, actuateDuration=1000)
+
+        self._checkDoorChanged(None)
 
 
     ##########################################################################
     # Public functions
     ##########################################################################
 
-    def needsRefresh(self):
-        return self._refresh
-
-    # Update the configurable parameters of the sysem
-    def setControls(self, transitionTime=None, actuateDuration=None, refresh=None, hubIp=None):
+    """
+    Update the configurable parameters of the sysem
+    """
+    def setControls(self, transitionTime=None, actuateDuration=None, hubIp=None):
         if (transitionTime):
             self._transitionTime = transitionTime
         if (actuateDuration):
             self._actuateDuration = actuateDuration
-        if (refresh is not None):
-            self._refresh = refresh
         if (hubIp):
             self._hubIp = hubIp
 
         self._writeSettings()
 
-    # Read settings from file
-    def getControls(self):
-        self._readSettings()
-
-    # Get IP of the hub
+    """
+    Get IP of the hubitat hub
+    """
     def hubIp(self):
         return self._hubIp
 
-    # Try to close the garage door
+    """
+    Try to close the garage door
+    """
     def closeDoor(self):
-        self._readStatus()
-        print('Status: '+self._status)
+        print('Requesting door close')
 
         # if open -> actuate 1x
         if (self._status == "open"):
@@ -114,12 +107,14 @@ class garageDoor():
             self._actuateRelay()
             print("Door closing")
         else:
-            print ("Valid status not found")
+            print("Door in unknown state, actuating relay")
+            self._actuateRelay()
 
-    # Try to open the garage door
+    """
+    Try to open the garage door
+    """
     def openDoor(self):
-        self._readStatus()
-        print('Status: '+self._status)
+        print('Requesting door open')
 
         # if open -> do nothing
         if (self._status == "open"):
@@ -140,131 +135,76 @@ class garageDoor():
             self._doubleActuateDoor()
             print ("Door closing then opening")
         else:
-            print ("Valid status not found")
+            print ("Door in unknown state, actuating relay")
+            self._actuateRelay()
 
-    # This should be called frequenty in a main loop to keep everything up to date
-    # @returns  (newStatus, status)
-    #           newStatus   boolean     is this status new?
-    #           status      string      current status value
-    def checkNewStatus(self):
-        isFullyClosed = self._isClosed()
-        isFullyOpen = self._isOpen()
-        newStatus = None
+    def refreshHubitat(self):
+        if (self._hubIp):
+            url = 'http://'+self._hubIp+':39501'
+            body = {'status':self._status,'isNew':False}
+            r = requests.post(url, json=body)
+            print("Sending refresh status (" + self._status +") to hub (" + str(self._hubIp) + ")")
 
-        # Check if the time has elapsed (door is stopped partially open)
-        if (self._startTime):
-            elapsedTime = time.time()-self._startTime
-            if (elapsedTime > self._transitionTime):
-                self._startTime = None
-                newStatus = "stopped"
-
-        # Check for new absolute states
-        if (isFullyClosed != self._wasFullyClosed or isFullyOpen != self._wasFullyOpen):
-            # Report door is now fully closed
-            if (isFullyClosed):
-                newStatus = "closed"
-                # Reset timer when we reach fully closed
-                self._startTime = None
-            # Report door is now fully open
-            elif (isFullyOpen):
-                newStatus = "open"
-                # Reset timer when we reach fully closed
-                self._startTime = None
-            # Report door is no longer fully open
-            elif(self._wasFullyOpen):
-                newStatus = "closing"
-                # Start timer
-                self._startTime = time.time()
-            # Report door is no longer closed
-            elif(self._wasFullyClosed):
-                newStatus = "opening"
-                # Start timer
-                self._startTime = time.time()
-        if (isFullyOpen and isFullyClosed and self._status != "unknown"):
-            newStatus = "unknown"
-
-        self._wasFullyClosed = isFullyClosed
-        self._wasFullyOpen = isFullyOpen
-
-        if (newStatus):
-            self._status = newStatus
-            self._updateStatusLeds(newStatus)
-            self._writeStatus()
-            return (True, newStatus)
-        else:
-            # Report existing status
-            return (False, self._status)
 
     ##########################################################################
     # Internal functions
     ##########################################################################
 
-    # Check sensors and update global variables
-    def _updateGPIOStatus(self):
-        self._closed = GPIO.input(self._closePin)
-        self._open = GPIO.input(self._openPin)
-
-    # Return true if door is in FULLY closed position, false if not
-    def _isClosed(self):
-        self._updateGPIOStatus()
-        return self._closed
-
-    # Return true if door is in FULLY open position, false if not
-    def _isOpen(self):
-        self._updateGPIOStatus()
-        return self._open
-
-    # Actuate the relay to open/close door
+    """
+    Actuate the relay to open/close door
+    """
     def _actuateRelay(self):
         print("Actuating Relay...")
         GPIO.output(self._relayPin, GPIO.HIGH)
         time.sleep(float(self._actuateDuration)/1000)
         GPIO.output(self._relayPin, GPIO.LOW)
 
-    # Double actuate the relay to open/close door
+    """
+    Double actuate the relay to open/close door
+    """
     def _doubleActuateDoor(self):
         self._actuateRelay()
         time.sleep(self._actuateDuration/1000)
         self._actuateRelay()
 
-    # Write the status to the statusFile. This should be performed by the main 
-    # thread so that the background Flask thread can read the current status 
-    # from the file.
-    def _writeStatus(self):
-        f = open(self._statusFile, "w")
-        f.write(self._status)
-        pass
-    # Read the status from the statusFile. This should be performed by the 
-    # background Flask thread to get the current status of the main thread.
-    def _readStatus(self):
-        f = open(self._statusFile, "r")
-        self._status = f.read()
-
-    # Write hubitat settings to the settings file. This should be performed by
-    # the background Flask thread.
+    """
+    Write hubitat settings to the settings file
+    """
     def _writeSettings(self):
+        print("Writing settings...")
         settings = {}
         settings['transitionTime'] = self._transitionTime
         settings['actuateDuration'] = self._actuateDuration
-        settings['refresh'] = self._refresh
         settings['hubIp'] = self._hubIp
         with open(self._settingsFile, "w") as outfile:
             json.dump(settings, outfile)
 
-    # Read hubitat settings from the settings file. This shold be performed by 
-    # the maain thread.
+        print("transitionTime = " + str(self._transitionTime) + "s")
+        print("actuateDuration = " + str(self._actuateDuration) + "ms")
+        print("hubIp = " + str(self._hubIp))
+
+    """
+    Read hubitat settings from the settings file
+    """
     def _readSettings(self):
-        if (path.exists(self._settingsFile)):
+        if (path.exists("./" + self._settingsFile)):
+            print("Reading in settings...")
             with open(self._settingsFile, "r") as json_file:
                 data = json.load(json_file)
                 self._transitionTime = data['transitionTime']
                 self._actuateDuration = data['actuateDuration']
-                self._refresh = data['refresh']
                 self._hubIp = data['hubIp']
-                return 0
+
+            print("transitionTime = " + str(self._transitionTime) + "s")
+            print("actuateDuration = " + str(self._actuateDuration) + "ms")
+            print("hubIp = " + str(self._hubIp))
+            return 0
         else:
             return 1
 
+    """
+    Update the LED indicators based on the status
+    """
     def _updateStatusLeds(self, status):
         # Reset all status leds
         leds = (self._greenPin, self._yellowPin, self._redPin)
@@ -286,10 +226,77 @@ class garageDoor():
             setLeds = (self._greenPin, self._yellowPin, self._redPin)
         else:
             setLeds = None
-            print ("Valid status not found")
+            print ("Unknown LED state")
 
         if (setLeds):
             GPIO.output(setLeds, GPIO.HIGH)
+
+    """
+    Handler for when the door opens or closes. This should be called at startup and when
+    the interrupt handler for the door stat sensors fire.
+    """
+    def _checkDoorChanged(self, pin):
+        doorClosed = GPIO.input(self._closePin)
+        doorOpen = GPIO.input(self._openPin)
+        newStatus = None
+
+        # Door is closed
+        if (doorClosed and not doorOpen):
+            if (self._status != "closed"):
+                newStatus = "closed"
+                print("Status: Door is closed")
+        # Door is open
+        elif (doorOpen and not doorClosed):
+            if (self._status != "open"):
+                newStatus = "open"
+                print("Status: Door is open")
+        # Somewhere in between
+        elif (not doorOpen and not doorClosed):
+            if (pin == self._closePin and self._status == "closed"):
+                newStatus = "opening"
+                print("Status: Door is opening")
+                # Check if door stopped after transitionTime
+                threading.Timer(self._transitionTime, self._doorStopped).start()
+            elif (pin == self._openPin and self._status == "open"):
+                newStatus = "closing"
+                print("Status: Door is closing")
+                # Check if door stopped after transitionTime
+                threading.Timer(self._transitionTime, self._doorStopped).start()
+            elif (pin == None):
+                # this only happens during startup when pin = None (not an interrupt)
+                newStatus = "open"
+                print("Status: Pin is None, Door is unknown, assume open")
+        elif (doorOpen and doorClosed):
+            self._status = "unknown"
+            print("Status: Door is unknown")
+        else:
+            self._status = "unknown"
+            print("This shouldn't happen, setting door to unknown")
+
+
+        if (newStatus):
+            self._updateStatusAll(newStatus)
+
+    """
+    This should be called after a timer interupt. If the door hasn't finish opening or
+    closing, it will assume the door has stopped open, and report open.
+    """
+    def _doorStopped(self):
+        if (self._status != "open" and self._status != "closed"):
+            print("Door stopped, reporting open")
+            self._updateStatusAll("open")
+
+    """
+    Update the local status, Hubitat status, and LED status
+    """
+    def _updateStatusAll(self, newStatus):
+        self._status = newStatus
+        self._updateStatusLeds(newStatus)
+        if (self._hubIp):
+            url = 'http://'+self._hubIp+':39501'
+            body = {'status':newStatus,'isNew':True}
+            r = requests.post(url, json=body)
+            print("Sending status (" + newStatus +") to hub (" + str(self._hubIp) + ")")
 
 # Main Program
 # Flask app for receiving POST Requests
@@ -316,55 +323,23 @@ def configure_command():
     transitionTime = data['transitionTime']
     actuateDuration = data['actuateDuration']
     hubAddr = request.remote_addr
-    garage.setControls(transitionTime=transitionTime, actuateDuration=actuateDuration, refresh=True, hubIp=hubAddr)
+    garage.setControls(transitionTime=transitionTime, actuateDuration=actuateDuration, hubIp=hubAddr)
     return {'status':'Configuring...'}
 
 @app.route('/PiGarage/refresh/', methods=['POST'])
-def refresh_command():
-    time.sleep(1)
-    garage.setControls(refresh = True)
+def refresh():
     # Update hub ip
     if (not garage.hubIp()):
         garage.setControls(hubIp=request.remote_addr)
-    return {'status':'Refreshing...'}
-
-# Main loop to run in the background
-def garage_loop():
-    while (True):
-        garage.getControls()
-
-        (newStatus, status) = garage.checkNewStatus()
-
-        # Hubitat receives unsolicited http post requests on port 39501
-        # and routes the message to the parse() method of the device 
-        # with the matching DeviceNetworkId (IP, Mac, etc)
-        if (newStatus or garage.needsRefresh()):
-
-            if (newStatus):
-                print("Posting new status")
-            else:
-                print("Posting refresh")
-                garage.setControls(refresh = False)
-
-            hubIp = garage.hubIp()
-            print("Sending to " + str(hubIp))
-            if (hubIp):
-                url = 'http://'+hubIp+':39501'
-                body = {'status':status,'isNew':newStatus}
-                r = requests.post(url, json=body)
-
-                print("NewStatus: "+str(status))
-        time.sleep(.1)
+    garage.refreshHubitat()
+    return {'status':'Refreshing Hubitat...'}
 
 if __name__ == '__main__':
     GPIO.setmode(GPIO.BOARD)
     garage = garageDoor(closePin =  29, 
                         openPin  =  31, 
                         relayPin =  33)
-    p = Process(target=garage_loop)
-    p.start()
     app.run(host='0.0.0.0')
-    p.join()
 
 print("Cleaning up GPIO")
 GPIO.cleanup()

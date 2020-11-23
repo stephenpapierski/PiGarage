@@ -17,6 +17,7 @@
  *   Date        Who                   What
  *   ----        ---                   ----
  *   2020-01-19  Stephen Papierski     Initial Commit
+ *   2020-11-22  Stephen Papierski     Removing stoppedOpen to align with raspberry pi code update
  * 
  */
 metadata {
@@ -26,7 +27,6 @@ metadata {
         //capability "Lock"     //Enable ability to keep the garage door shut
         //capability "Chime"    //Enable ability to sound chime before closing door
 
-        attribute "stoppedOpen", "Boolean"
         attribute "lastActivity", "String"
         attribute "lastEvent", "String"
         attribute "responding", "Boolean"
@@ -52,14 +52,9 @@ def parse(String description) {
     def status = body.status
     def isNew = body.isNew
     if (settings.debugEnable){
-        if (debugEnable) log.debug("Status = $status")}
-    if (status == "stopped"){
-        sendEvent(name:"door", value:"open", isStateChanged:isNew)
-        sendEvent(name:"stoppedOpen", value:true, isStateChanged:isNew)
-    } else {
-        sendEvent(name:"door", value:status, isStateChanged:isNew)
-        sendEvent(name:"stoppedOpen", value:false, isStateChanged:isNew)
+        if (debugEnable) log.debug("Status = $status")
     }
+    sendEvent(name:"door", value:status, isStateChanged:isNew)
     
     //Record last activity
     recordActivity("garage reported ${status}")
@@ -74,18 +69,18 @@ def updated(){
 }
 
 def close() {
-    sendCmd(devicePath + "/close/", [:])
     recordActivity("hub sent close command")
+    sendCmd(devicePath + "/close/", [:])
 }
 
 def open() {
-    sendCmd(devicePath + "/open/", [:])
     recordActivity("hub sent open command")
+    sendCmd(devicePath + "/open/", [:])
 }
 
 def refresh() {
-    sendCmd(devicePath + "/refresh/", [:])
     recordActivity("hub sent refresh command")
+    sendCmd(devicePath + "/refresh/", [:])
 }
 
 def sendCmd(String action, Map postData) {
